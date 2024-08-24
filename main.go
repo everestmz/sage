@@ -1,27 +1,25 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
-
-var PyrightLangserver = &LanguageServerConfig{
-	Command: "pyright-langserver",
-	Args:    []string{"--stdio"},
-	Config:  map[string]any{},
-}
 
 type SymbolInfo struct {
 	protocol.SymbolInformation
 	RelativePath string
+	Description  string
+	Embedding    []float64
 }
 
 func main() {
@@ -29,7 +27,7 @@ func main() {
 		Use: "sage",
 	}
 
-	rootCmd.AddCommand(IndexCmd, LanguageServerCmd)
+	rootCmd.AddCommand(IndexCmd, LanguageServerCmd, CompletionCmd, DevCmds)
 
 	err := rootCmd.Execute()
 	if err != nil {
@@ -38,8 +36,13 @@ func main() {
 	}
 }
 
-func startLsp(lsp *LanguageServerConfig, folder string, clientConn *protocol.Client, capabilities protocol.ClientCapabilities) (*ChildLanguageServer, error) {
-	cmd := exec.Command(lsp.Command, lsp.Args...)
+func startLsp(lsp *LanguageServerConfig, clientConn *protocol.Client, params *protocol.InitializeParams) (*ChildLanguageServer, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command(*lsp.Command, lsp.Args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -50,9 +53,67 @@ func startLsp(lsp *LanguageServerConfig, folder string, clientConn *protocol.Cli
 		return nil, err
 	}
 
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	workspaceDir := getWorkspaceDir(wd)
+	stdoutFileName := filepath.Join(workspaceDir, "lsp_stdout.log")
+	stdoutFile, err := os.Create(stdoutFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	stdinFileName := filepath.Join(workspaceDir, "lsp_stdin.log")
+	stdinFile, err := os.Create(stdinFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	stderrFileName := filepath.Join(workspaceDir, "lsp_stderr.log")
+	stderrFile, err := os.Create(stderrFileName)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		stderrScanner := bufio.NewScanner(stderr)
+		for stderrScanner.Scan() {
+			_, err := stderrFile.Write(stderrScanner.Bytes())
+			if err != nil {
+				panic(err)
+			}
+			stderrFile.Sync()
+		}
+
+		err := stderrFile.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+
+	jsonRpcLogFile := filepath.Join(workspaceDir, "json_rpc.log")
+	jsonRpcLog, err := os.Create(jsonRpcLogFile)
+	if err != nil {
+		return nil, err
+	}
+
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "timestamp"
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(encoderConfig), // Encoder configuration
+		zapcore.AddSync(jsonRpcLog),           // Log file
+		zap.DebugLevel,                        // Log level
+	)
+
+	// Create the logger
+	logger := zap.New(core)
 
 	rwc := &CombinedReadWriteCloser{
 		Reader: stdout,
@@ -66,48 +127,43 @@ func startLsp(lsp *LanguageServerConfig, folder string, clientConn *protocol.Cli
 
 			return cmd.Process.Kill()
 		},
+		readFile:  stdoutFile,
+		writeFile: stdinFile,
 	}
-
-	fmt.Println("Stream init...")
 	stream := jsonrpc2.NewStream(rwc)
 	conn := jsonrpc2.NewConn(stream)
 
 	if clientConn == nil {
-		lspClient := protocol.ClientDispatcher(conn, zap.L())
+		lspClient := protocol.ClientDispatcher(conn, logger)
 		clientConn = &lspClient
 	}
 
 	ctx, conn, server := protocol.NewClient(context.Background(), *clientConn, stream, zap.L())
 
-	result, err := server.Initialize(ctx, &protocol.InitializeParams{
-		ProcessID:    int32(os.Getpid()),
-		Capabilities: capabilities,
-		WorkspaceFolders: []protocol.WorkspaceFolder{
-			{
-				URI:  string(uri.File(folder)),
-				Name: "Main workspace",
-			},
-		},
-	})
+	result, err := server.Initialize(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("Setting config...")
-	err = server.DidChangeConfiguration(ctx, &protocol.DidChangeConfigurationParams{
-		Settings: map[string]any{},
-	})
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println("Config set!")
-
-	return &ChildLanguageServer{
+	childLs := &ChildLanguageServer{
+		Conn:    conn,
+		Cmd:     cmd,
 		Server:  server,
 		Context: ctx,
 		Close: func() {
+			logger.Sync()
+			jsonRpcLog.Close()
+			stdoutFile.Close()
+			stdinFile.Close()
+			stderrFile.Close()
 			conn.Close()
 		},
-		Capabilities: result.Capabilities,
-	}, nil
+		InitResult: result,
+	}
+
+	go func() {
+		cmd.Wait()
+	}()
+
+	return childLs, nil
 }
