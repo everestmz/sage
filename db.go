@@ -8,6 +8,8 @@ import (
 
 	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
+	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 )
 
 func init() {
@@ -91,4 +93,42 @@ func (db *DB) InsertSymbol(kind, name, path string, startL, startC, endL, endC i
 	}
 
 	return result.LastInsertId()
+}
+
+func (db *DB) FindSymbolByPrefix(prefix string) ([]protocol.SymbolInformation, error) {
+	rows, err := db.Query(`SELECT kind, name, path, start_line, start_col, end_line, end_col FROM symbol WHERE name LIKE ? LIMIT 100`, fmt.Sprintf("%s%%", prefix))
+	if err != nil {
+		return nil, err
+	}
+
+	result := []protocol.SymbolInformation{}
+
+	for rows.Next() {
+		var kind, name, path string
+		var startLine, startCol, endLine, endCol uint32
+		err = rows.Scan(&kind, &name, &path, &startLine, &startCol, &endLine, &endCol)
+		if err != nil {
+			return nil, err
+		}
+
+		result = append(result, protocol.SymbolInformation{
+			Name: name,
+			Kind: 12,
+			Location: protocol.Location{
+				URI: uri.File(path),
+				Range: protocol.Range{
+					Start: protocol.Position{
+						Line:      startLine,
+						Character: startCol,
+					},
+					End: protocol.Position{
+						Line:      endLine,
+						Character: endCol,
+					},
+				},
+			},
+		})
+	}
+
+	return result, nil
 }

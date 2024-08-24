@@ -2,12 +2,19 @@ module github.com/everestmz/sage
 
 go 1.20
 
+require github.com/rs/zerolog v1.33.0
+
 require (
 	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.3.4 // indirect
+	github.com/spf13/cobra v1.8.1 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	go.lsp.dev/jsonrpc2 v0.10.0 // indirect
 	go.lsp.dev/pkg v0.0.0-20210717090340-384b27a52fb2 // indirect
 	go.lsp.dev/protocol v0.12.0 // indirect
@@ -25,6 +32,7 @@ require (
 	golang.org/x/tools v0.22.0 // indirect
 	golang.org/x/tools/gopls v0.15.3 // indirect
 	golang.org/x/vuln v1.0.1 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	honnef.co/go/tools v0.4.6 // indirect
 	mvdan.cc/gofumpt v0.6.0 // indirect
 	mvdan.cc/xurls/v2 v2.5.0 // indirect
