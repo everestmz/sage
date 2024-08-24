@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -17,57 +16,10 @@ import (
 	"go.uber.org/zap"
 )
 
-type LanguageServerConfig struct {
-	Command string
-	Args    []string
-	Config  map[string]any
-}
-
-type CombinedReadWriteCloser struct {
-	io.Reader
-	io.Writer
-	Closer func() error
-}
-
-func (c *CombinedReadWriteCloser) Read(p []byte) (int, error) {
-	return c.Reader.Read(p)
-}
-
-func (c *CombinedReadWriteCloser) Write(p []byte) (int, error) {
-	return c.Writer.Write(p)
-}
-
-func (c *CombinedReadWriteCloser) Close() error {
-	return c.Closer()
-}
-
 var PyrightLangserver = &LanguageServerConfig{
 	Command: "pyright-langserver",
 	Args:    []string{"--stdio"},
 	Config:  map[string]any{},
-}
-
-type ReadLogger struct {
-	io.ReadCloser
-}
-
-func (rl *ReadLogger) Read(p []byte) (n int, err error) {
-	n, err = rl.ReadCloser.Read(p)
-	fmt.Fprintln(os.Stderr, "READ", string(p))
-	return n, err
-}
-
-func (rl *ReadLogger) Close() error {
-	return rl.Close()
-}
-
-type WriteLogger struct {
-	io.Writer
-}
-
-func (wl *WriteLogger) Write(p []byte) (n int, err error) {
-	fmt.Fprintln(os.Stderr, "WRITING", string(p))
-	return wl.Writer.Write(p)
 }
 
 type SymbolInfo struct {
@@ -225,21 +177,9 @@ func main() {
 	}
 
 	return
-
-	// for _, sym := range syms {
-	// 	symInfo := &protocol.SymbolInformation{}
-	// 	bs, _ := json.Marshal(sym)
-	// 	err = json.Unmarshal(bs, symInfo)
-	// 	if symInfo.ContainerName == "" {
-	// 		fmt.Println(symInfo.Kind.String(), symInfo.Name)
-	// 	} else {
-	// 		fmt.Println(" ", symInfo.ContainerName+":", symInfo.Kind.String(), symInfo.Name)
-	// 	}
-	// }
 }
 
 func startLsp(lsp *LanguageServerConfig, folder string) (context.Context, protocol.Server, func(), error) {
-	fmt.Println("PATH", folder)
 	cmd := exec.Command(lsp.Command, lsp.Args...)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -256,12 +196,6 @@ func startLsp(lsp *LanguageServerConfig, folder string) (context.Context, protoc
 	}
 
 	rwc := &CombinedReadWriteCloser{
-		// Reader: &ReadLogger{
-		// 	ReadCloser: stdout,
-		// },
-		// Writer: &WriteLogger{
-		// 	Writer: stdin,
-		// },
 		Reader: stdout,
 		Writer: stdin,
 		Closer: func() error {
@@ -299,13 +233,7 @@ func startLsp(lsp *LanguageServerConfig, folder string) (context.Context, protoc
 
 	fmt.Println("Setting config...")
 	err = server.DidChangeConfiguration(ctx, &protocol.DidChangeConfigurationParams{
-		Settings: map[string]any{
-			// "python": map[string]any{
-			// 	"analysis": map[string]any{
-			// 		"diagnosticMode": "openFilesOnly",
-			// 	},
-			// },
-		},
+		Settings: map[string]any{},
 	})
 	if err != nil {
 		return nil, nil, nil, err
