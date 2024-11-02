@@ -141,7 +141,8 @@ func (c *LspClient) Conn() jsonrpc2.Conn {
 }
 
 var LanguageServerCmd = &cobra.Command{
-	Use: "ls",
+	Use:   "ls",
+	Short: "Start the sage language server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flags := cmd.Flags()
 
