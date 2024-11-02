@@ -30,7 +30,7 @@ func main() {
 		Use: "sage",
 	}
 
-	rootCmd.AddCommand(IndexCmd, LanguageServerCmd, CompletionCmd, DevCmds)
+	rootCmd.AddCommand(IndexCmd, LanguageServerCmd, CompletionCmd, DevCmds, CtxCmd)
 
 	if isatty.IsTerminal(os.Stdout.Fd()) {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
