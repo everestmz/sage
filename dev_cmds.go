@@ -26,7 +26,8 @@ func init() {
 }
 
 var DevCmds = &cobra.Command{
-	Use: "dev",
+	Use:   "dev",
+	Short: "Development commands",
 }
 
 var InspectCmd = &cobra.Command{
