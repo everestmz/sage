@@ -26,7 +26,8 @@ func init() {
 }
 
 var IndexCmd = &cobra.Command{
-	Use: "index",
+	Use:   "index",
+	Short: "Create or update the sage index for a directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -165,10 +166,11 @@ var IndexCmd = &cobra.Command{
 			}
 			if ok {
 				// We've already indexed this exact file
-				log.Debug().Str("path", path).Str("hash", hashStr).Msg("Skipping indexed file")
+				log.Info().Str("path", path).Str("hash", hashStr).Msg("Skipping indexed file")
 				return nil
 			}
 
+			log.Debug().Str("path", path).Str("hash", hashStr).Msg("Indexing file")
 			tx, err := db.Begin()
 			if err != nil {
 				return err
