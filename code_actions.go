@@ -7,11 +7,16 @@ import (
 	"os"
 	"strings"
 
+	cursor "github.com/everestmz/everestmz.github.io/cursor-reversing/client"
+	aiserverv1 "github.com/everestmz/everestmz.github.io/cursor-reversing/client/cursor/gen/aiserver/v1"
+
+	"github.com/rs/zerolog"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
 
 var lspCommands = []*CommandDefinition{
+	lspCommandExecCursorCompletion,
 	lspCommandExecCompletion,
 	lspCommandOpenModelsConfig,
 	lspCommandOpenContextConfig,
@@ -151,10 +156,10 @@ var lspCommandOpenModelsConfig = &CommandDefinition{
 	},
 }
 
-var lspCommandExecCompletion = &CommandDefinition{
-	Title:          "Ollama generate",
+var lspCommandExecCursorCompletion = &CommandDefinition{
+	Title:          "Cursor generate",
 	ShowCodeAction: true,
-	Identifier:     "sage.completion.selection",
+	Identifier:     "sage.completion.cursor.selection",
 	BuildArgs: func(params *protocol.CodeActionParams) ([]any, error) {
 		args := &LlmCompletionArgs{
 			Filename:  params.TextDocument.URI,
@@ -176,44 +181,177 @@ var lspCommandExecCompletion = &CommandDefinition{
 			return nil, err
 		}
 
-		textDocument := clientInfo.GetOpenDocument(args.Filename)
-
-		documentLines := append(strings.Split(textDocument.Text, "\n"), "") // Unixy files end in \n
-		lineRange := documentLines[args.Selection.Start.Line : args.Selection.End.Line+1]
-		lsLogger.Debug().Str("Line range", fmt.Sprint(lineRange)).Msg("Lines Range")
-		endLineIndex := args.Selection.End.Line - args.Selection.Start.Line
-		lsLogger.Debug().Uint32("end idx", endLineIndex).Msg("End idx")
-		lineRange[0] = lineRange[0][args.Selection.Start.Character:]
-		lineRange[endLineIndex] = lineRange[endLineIndex][:args.Selection.End.Character]
-		lsLogger.Debug().Str("Line range", fmt.Sprint(lineRange)).Msg("Lines Range after narrowing")
-
-		documentContext := strings.Join(documentLines[:args.Selection.End.Line], "\n")
-		selectionText := strings.Join(lineRange, "\n")
-
-		contextProviders, err := clientInfo.Config.Context.Get()
+		prompt, err := buildPrompt(lsLogger, args, clientInfo)
 		if err != nil {
 			return nil, err
 		}
 
-		filesContext, err := BuildContext(contextProviders, clientInfo)
+		editsManager := NewLlmResponseEditsManager(client, args.Filename, args.Selection.End.Line, args.Selection.End.Character)
+
+		aiClient := cursor.NewAiServiceClient()
+
+		model := "claude-3.5-sonnet"
+
+		resp, err := aiClient.StreamChat(context.TODO(), cursor.NewRequest(&aiserverv1.GetChatRequest{
+			ModelDetails: &aiserverv1.ModelDetails{
+				ModelName: &model,
+			},
+			Conversation: []*aiserverv1.ConversationMessage{
+				{
+					Text: prompt,
+					Type: aiserverv1.ConversationMessage_MESSAGE_TYPE_HUMAN,
+				},
+			},
+		}))
+
 		if err != nil {
 			return nil, err
 		}
 
-		prompt := filesContext
+		for resp.Receive() {
+			next := resp.Msg()
+			editsManager.NextEdit(next.Text)
+		}
 
-		prompt += "<CurrentFile path=\"" + args.Filename.Filename() + "\">\n"
-		prompt += documentContext
-		prompt += "\n</CurrentFile>\n"
+		return nil, nil
+	},
+}
 
-		prompt += `<SystemPrompt>
+func buildPrompt(lsLogger zerolog.Logger, args *LlmCompletionArgs, clientInfo *LanguageServerClientInfo) (string, error) {
+	textDocument := clientInfo.GetOpenDocument(args.Filename)
+
+	documentLines := append(strings.Split(textDocument.Text, "\n"), "") // Unixy files end in \n
+	lineRange := documentLines[args.Selection.Start.Line : args.Selection.End.Line+1]
+	lsLogger.Debug().Str("Line range", fmt.Sprint(lineRange)).Msg("Lines Range")
+	endLineIndex := args.Selection.End.Line - args.Selection.Start.Line
+	lsLogger.Debug().Uint32("end idx", endLineIndex).Msg("End idx")
+	lineRange[0] = lineRange[0][args.Selection.Start.Character:]
+	lineRange[endLineIndex] = lineRange[endLineIndex][:args.Selection.End.Character]
+	lsLogger.Debug().Str("Line range", fmt.Sprint(lineRange)).Msg("Lines Range after narrowing")
+
+	documentContext := strings.Join(documentLines[:args.Selection.End.Line], "\n")
+	selectionText := strings.Join(lineRange, "\n")
+
+	contextProviders, err := clientInfo.Config.Context.Get()
+	if err != nil {
+		return "", err
+	}
+
+	filesContext, err := BuildContext(contextProviders, clientInfo)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := filesContext
+
+	prompt += "<CurrentFile path=\"" + args.Filename.Filename() + "\">\n"
+	prompt += documentContext
+	prompt += "\n</CurrentFile>\n"
+
+	prompt += `<SystemPrompt>
 A user's prompt, in the form of a question, or a description code to write, is shown below. Satisfy the user's prompt or question to the best of your ability. If asked to complete code, DO NOT type out any extra text, or backticks since your response will be appended to the end of the CurrentFile. DO NOT regurgitate the whole file. Simply return the new code, or the modified code.
 </SystemPrompt>
 `
 
-		prompt += "<UserPrompt>\n"
-		prompt += selectionText
-		prompt += "\n</UserPrompt>\n"
+	prompt += "<UserPrompt>\n"
+	prompt += selectionText
+	prompt += "\n</UserPrompt>\n"
+
+	return prompt, nil
+}
+
+type LlmResponseEditsManager struct {
+	placeNextEdit protocol.Position
+	fullText      string
+	currentLine   string
+	client        LspClient
+	filename      uri.URI
+}
+
+func (m *LlmResponseEditsManager) NextEdit(nextText string) {
+	m.fullText += nextText
+
+	if strings.Contains(nextText, "\n") {
+		spl := strings.Split(nextText, "\n")
+		m.currentLine += spl[0]
+
+		m.client.Progress(context.TODO(), &protocol.ProgressParams{
+			// Token: *params.WorkDoneProgressParams.WorkDoneToken,
+			Value: &protocol.WorkDoneProgressReport{
+				Kind:    protocol.WorkDoneProgressKindReport,
+				Message: "sage: " + m.currentLine,
+			},
+		})
+		m.currentLine = strings.Join(spl[1:], "\n")
+	} else {
+		m.currentLine += nextText
+	}
+
+	m.client.ApplyEdit(context.TODO(), &protocol.ApplyWorkspaceEditParams{
+		Label: "llm_line",
+		Edit: protocol.WorkspaceEdit{
+			Changes: map[uri.URI][]protocol.TextEdit{
+				m.filename: []protocol.TextEdit{
+					{
+						Range: protocol.Range{
+							Start: m.placeNextEdit,
+							End:   m.placeNextEdit,
+						},
+						NewText: nextText,
+					},
+				},
+			},
+		},
+	})
+	offset := getPositionOffset(nextText)
+	m.placeNextEdit.Line += offset.Line
+	m.placeNextEdit.Character += offset.Character
+	if offset.Line > 0 {
+		m.placeNextEdit.Character = offset.Character
+	}
+
+}
+
+func NewLlmResponseEditsManager(client LspClient, filename uri.URI, startLine, startChar uint32) *LlmResponseEditsManager {
+	return &LlmResponseEditsManager{
+		placeNextEdit: protocol.Position{
+			Line:      startLine,
+			Character: startChar,
+		},
+		filename: filename,
+		client:   client,
+	}
+}
+
+var lspCommandExecCompletion = &CommandDefinition{
+	Title:          "Ollama generate",
+	ShowCodeAction: true,
+	Identifier:     "sage.completion.ollama.selection",
+	BuildArgs: func(params *protocol.CodeActionParams) ([]any, error) {
+		args := &LlmCompletionArgs{
+			Filename:  params.TextDocument.URI,
+			Selection: params.Range,
+		}
+
+		return []any{args}, nil
+	},
+	Execute: func(params *protocol.ExecuteCommandParams, client LspClient, clientInfo *LanguageServerClientInfo) (*protocol.ApplyWorkspaceEditParams, error) {
+		lsLogger := globalLsLogger.With().Str("code_action", "sage.completion.selection").Logger()
+		argBs, err := json.Marshal(params.Arguments[0])
+		if err != nil {
+			return nil, err
+		}
+
+		args := &LlmCompletionArgs{}
+		err = json.Unmarshal(argBs, args)
+		if err != nil {
+			return nil, err
+		}
+
+		prompt, err := buildPrompt(lsLogger, args, clientInfo)
+		if err != nil {
+			return nil, err
+		}
 
 		completionCh := make(chan string)
 		errCh := make(chan error)
@@ -255,13 +393,7 @@ A user's prompt, in the form of a question, or a description code to write, is s
 			close(errCh)
 		}()
 
-		fullText := ""
-		currentLine := ""
-
-		placeNextEdit := protocol.Position{
-			Line:      args.Selection.End.Line,
-			Character: args.Selection.End.Character,
-		}
+		editsManager := NewLlmResponseEditsManager(client, args.Filename, args.Selection.End.Line, args.Selection.End.Character)
 
 	outer:
 		for {
@@ -271,49 +403,8 @@ A user's prompt, in the form of a question, or a description code to write, is s
 					break outer
 				}
 
-				fullText += nextText
+				editsManager.NextEdit(nextText)
 
-				if strings.Contains(nextText, "\n") {
-					spl := strings.Split(nextText, "\n")
-					currentLine += spl[0]
-
-					lsLogger.Debug().Str("line", currentLine).Msg("Logging completion line to editor")
-					client.Progress(context.TODO(), &protocol.ProgressParams{
-						// Token: *params.WorkDoneProgressParams.WorkDoneToken,
-						Value: &protocol.WorkDoneProgressReport{
-							Kind:    protocol.WorkDoneProgressKindReport,
-							Message: "sage: " + currentLine,
-						},
-					})
-					currentLine = strings.Join(spl[1:], "\n")
-				} else {
-					currentLine += nextText
-				}
-
-				// Live edits code
-
-				client.ApplyEdit(context.TODO(), &protocol.ApplyWorkspaceEditParams{
-					Label: "llm_line",
-					Edit: protocol.WorkspaceEdit{
-						Changes: map[uri.URI][]protocol.TextEdit{
-							args.Filename: []protocol.TextEdit{
-								{
-									Range: protocol.Range{
-										Start: placeNextEdit,
-										End:   placeNextEdit,
-									},
-									NewText: nextText,
-								},
-							},
-						},
-					},
-				})
-				offset := getPositionOffset(nextText)
-				placeNextEdit.Line += offset.Line
-				placeNextEdit.Character += offset.Character
-				if offset.Line > 0 {
-					placeNextEdit.Character = offset.Character
-				}
 			case err, ok := <-errCh:
 				if !ok {
 					continue
@@ -325,7 +416,7 @@ A user's prompt, in the form of a question, or a description code to write, is s
 			}
 		}
 
-		lsLogger.Debug().Str("completion", fullText).Msg("Returning completion")
+		lsLogger.Debug().Str("completion", editsManager.fullText).Msg("Returning completion")
 		client.Progress(context.TODO(), &protocol.ProgressParams{
 			// Token: *params.WorkDoneProgressParams.WorkDoneToken,
 			Value: &protocol.WorkDoneProgressEnd{
@@ -335,23 +426,5 @@ A user's prompt, in the form of a question, or a description code to write, is s
 		})
 
 		return nil, nil
-
-		// return &protocol.ApplyWorkspaceEditParams{
-		// 	Label: "LLM completion",
-		// 	Edit: protocol.WorkspaceEdit{
-		// 		Changes: map[uri.URI][]protocol.TextEdit{
-		// 			args.Filename: []protocol.TextEdit{
-		// 				{
-		// 					// We want to put the completion right after the selection
-		// 					Range: protocol.Range{
-		// 						Start: args.Selection.End,
-		// 						End:   args.Selection.End,
-		// 					},
-		// 					NewText: fullText,
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// }, nil
 	},
 }
