@@ -11,8 +11,11 @@ import (
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+	"github.com/mattn/go-isatty"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+    "github.com/rs/zerolog"
+    "github.com/rs/zerolog/log"
 )
 
 type SymbolInfo struct {
@@ -28,6 +31,10 @@ func main() {
 	}
 
 	rootCmd.AddCommand(IndexCmd, LanguageServerCmd, CompletionCmd, DevCmds)
+
+	if isatty.IsTerminal(os.Stdout.Fd()) {
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	}
 
 	err := rootCmd.Execute()
 	if err != nil {
