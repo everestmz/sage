@@ -6,6 +6,31 @@ import (
 	"go.lsp.dev/protocol"
 )
 
+func TreeSymKindToLspKind(kind string) protocol.SymbolKind {
+	switch kind {
+	case "class":
+		return protocol.SymbolKindClass
+	case "function":
+		return protocol.SymbolKindFunction
+	case "method":
+		return protocol.SymbolKindMethod
+	case "type":
+		// NOTE: this is what typescript-language-server calls a typedef. /shrug
+		return protocol.SymbolKindVariable
+	case "module":
+		return protocol.SymbolKindModule
+	case "interface":
+		return protocol.SymbolKindInterface
+	case "enum":
+		return protocol.SymbolKindEnum
+	case "macro":
+		// XXX: this is definitely wrong
+		fallthrough
+	default:
+		return protocol.SymbolKindVariable
+	}
+}
+
 func GetRangeFromFile(text string, locationRange protocol.Range) string {
 	lines := strings.Split(text, "\n")
 

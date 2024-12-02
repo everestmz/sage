@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/everestmz/llmcat/treesym"
+	"github.com/everestmz/llmcat/treesym/language"
 	"github.com/everestmz/sage/lsp"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -53,43 +55,6 @@ var IndexCmd = &cobra.Command{
 
 		numFiles := 0
 
-		lsps := map[string]*ChildLanguageServer{}
-
-		params := &protocol.InitializeParams{
-			ProcessID:    int32(os.Getpid()),
-			Capabilities: protocol.ClientCapabilities{},
-			WorkspaceFolders: []protocol.WorkspaceFolder{
-				{
-					URI:  string(uri.File(wd)),
-					Name: "Main workspace",
-				},
-			},
-		}
-		for languageName, config := range config.Languages {
-			ls, err := startLsp(config.LanguageServer, nil, params)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("Setting config...")
-			err = ls.Server.DidChangeConfiguration(context.TODO(), &protocol.DidChangeConfigurationParams{
-				Settings: map[string]any{},
-			})
-			if err != nil {
-				return err
-			}
-			fmt.Println("Config set!")
-
-			defer func() {
-				err = ls.Exit(ls.Context)
-				if err != nil {
-					panic(err)
-				}
-			}()
-
-			lsps[languageName] = ls
-		}
-
 		llm, err := NewLLMClient()
 		if err != nil {
 			return err
@@ -115,19 +80,7 @@ var IndexCmd = &cobra.Command{
 				return err
 			}
 
-			relativePath, err := filepath.Rel(wd, filePath)
-			if err != nil {
-				return err
-			}
-
-			name, langConfig := config.GetLanguageConfigForFile(relativePath)
-			if langConfig == nil {
-				return fmt.Errorf("No language configuration in '%s' matching path '%s'", config.Name(), relativePath)
-			}
-
-			ls := lsps[name]
-
-			syms, err := indexFile(wd, filePath, content, config, ls, llm, indexFileOptions...)
+			syms, err := indexFile(wd, filePath, content, config, llm, indexFileOptions...)
 			if err != nil {
 				return err
 			}
@@ -145,13 +98,6 @@ var IndexCmd = &cobra.Command{
 		var timedOutFiles []string
 
 		indexFunc := func(path string) error {
-			configName, languageConfig := config.GetLanguageConfigForFile(path)
-			if languageConfig == nil {
-				return nil
-			}
-
-			ls := lsps[configName]
-
 			log.Debug().Str("path", path).Msg("Inspecting file")
 			content, err := os.ReadFile(path)
 			if err != nil {
@@ -195,7 +141,7 @@ var IndexCmd = &cobra.Command{
 
 			start := time.Now()
 
-			syms, err := indexFile(wd, path, content, config, ls, llm, indexFileOptions...)
+			syms, err := indexFile(wd, path, content, config, llm, indexFileOptions...)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					timedOutFiles = append(timedOutFiles, path)
@@ -222,25 +168,6 @@ var IndexCmd = &cobra.Command{
 
 			numSymbols += numSyms
 			resetCounter += numSyms
-
-			if resetCounter > 200000 {
-				resetCounter = 0
-				ls.Close()
-				ls, err = startLsp(languageConfig.LanguageServer, nil, params)
-				if err != nil {
-					panic(err)
-				}
-
-				fmt.Println("Setting config...")
-				err = ls.Server.DidChangeConfiguration(context.TODO(), &protocol.DidChangeConfigurationParams{
-					Settings: map[string]any{},
-				})
-				if err != nil {
-					return err
-				}
-				fmt.Println("Config set!")
-				lsps[configName] = ls
-			}
 
 			fmt.Println(fmt.Sprintf("%d (total %d)", numSyms, numSymbols), "symbols in", time.Since(start))
 
@@ -322,7 +249,7 @@ const (
 	IncludeEmbeddings IndexFileOption = iota
 )
 
-func indexFile(wd, path string, content []byte, config *SagePathConfig, ls *ChildLanguageServer, llm *LLMClient, options ...IndexFileOption) ([]*SymbolInfo, error) {
+func indexFile(wd, path string, content []byte, config *SagePathConfig, llm *LLMClient, options ...IndexFileOption) ([]*SymbolInfo, error) {
 	var shouldEmbed bool
 	for _, opt := range options {
 		switch opt {
@@ -333,74 +260,56 @@ func indexFile(wd, path string, content []byte, config *SagePathConfig, ls *Chil
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(ls.Context, time.Minute)
-	defer cancel()
-
-	// TODO: make this a config-driven option
-	// model := "deepseek-coder-v2:16b"
-
-	pathUri := uri.File(path)
-
-	textDoc := protocol.TextDocumentItem{
-		URI:        pathUri,
-		LanguageID: protocol.PythonLanguage,
-		Version:    1,
-		Text:       string(content),
-	}
-
 	relativePath, err := filepath.Rel(wd, path)
 	if err != nil {
 		return nil, err
 	}
 
-	err = ls.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
-		TextDocument: textDoc,
+	fileUri := uri.File(relativePath)
+
+	processedFile, err := treesym.GetSymbols(context.TODO(), &treesym.SourceFile{
+		Path: path,
+		Text: string(content),
 	})
-	if err != nil {
+	if err == language.ErrUnsupportedExtension {
+		log.Debug().Msgf("No supported tree-sitter grammar for file %s", path)
+		return nil, nil
+	} else if err != nil {
 		return nil, err
 	}
 
-	syms, err := ls.DocumentSymbol(ctx, &protocol.DocumentSymbolParams{
-		TextDocument: protocol.TextDocumentIdentifier{
-			URI: pathUri,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	err = ls.DidClose(ctx, &protocol.DidCloseTextDocumentParams{
-		TextDocument: protocol.TextDocumentIdentifier{
-			URI: textDoc.URI,
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
+	syms := processedFile.Symbols.Definitions
 
 	var result []*SymbolInfo
 
 	for _, sym := range syms {
-		info := &protocol.SymbolInformation{}
-		bs, _ := json.Marshal(sym)
-		err = json.Unmarshal(bs, info)
-		if err != nil {
-			return nil, err
-		}
-
-		if info.ContainerName != "" && info.Kind >= protocol.SymbolKindVariable {
-			continue
-		}
-
 		calculatedInfo := &SymbolInfo{
-			SymbolInformation: *info,
-			RelativePath:      relativePath,
+			SymbolInformation: protocol.SymbolInformation{
+				Name:       sym.Name,
+				Kind:       lsp.TreeSymKindToLspKind(sym.Kind),
+				Tags:       []protocol.SymbolTag{},
+				Deprecated: false,
+				Location: protocol.Location{
+					URI: fileUri,
+					Range: protocol.Range{
+						Start: protocol.Position{
+							Line:      sym.StartPoint.Row,
+							Character: sym.StartPoint.Column,
+						},
+						End: protocol.Position{
+							Line:      sym.EndPoint.Row,
+							Character: sym.EndPoint.Column,
+						},
+					},
+				},
+				// Empty container name since we're only getting top-level right now
+				ContainerName: "",
+			},
+			RelativePath: relativePath,
 		}
-
-		// fmt.Println("Indexing", info.Kind, info.Name)
 
 		if shouldEmbed {
-			symbolText := lsp.GetRangeFromFile(string(content), info.Location.Range)
+			symbolText := lsp.GetRangeFromFile(string(content), calculatedInfo.Location.Range)
 
 			prompt := "\n============= INSTRUCTIONS: ================\nDescribe the following code. Be concise, but descriptive. Use domain-specific terms like function names, class names, etc. Make sure you cover as many edge cases and interesting codepaths/features as possible. Above this message is more code from the same file as this symbol. Your response will be indexed for full-text search. DO NOT reproduce the code with comments. Simply write a short but descriptive paragraph about the code:\n"
 
@@ -431,7 +340,7 @@ func indexFile(wd, path string, content []byte, config *SagePathConfig, ls *Chil
 
 			calculatedInfo.Embedding = embedding
 		} else {
-			calculatedInfo.Embedding = make([]float64, 768)
+			calculatedInfo.Embedding = nil
 		}
 
 		result = append(result, calculatedInfo)

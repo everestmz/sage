@@ -21,13 +21,19 @@ type SageModelsConfig struct {
 	ExplainCode *string `yaml:"explain_code,omitempty"`
 }
 
+func NewPathConfig(name string) *SagePathConfig {
+	return &SagePathConfig{
+		Path: nil,
+		name: name,
+	}
+}
+
 type SagePathConfig struct {
-	Path      *string                       `yaml:"path"`
-	Languages map[string]SageLanguageConfig `yaml:"languages"`
-	Include   []string                      `yaml:"include"`
-	Exclude   []string                      `yaml:"exclude"`
-	Models    *liveconf.ConfigWatcher[SageModelsConfig]
-	Context   *liveconf.ConfigWatcher[[]*ContextItemProvider]
+	Path    *string  `yaml:"path"`
+	Include []string `yaml:"include"`
+	Exclude []string `yaml:"exclude"`
+	Models  *liveconf.ConfigWatcher[SageModelsConfig]
+	Context *liveconf.ConfigWatcher[[]*ContextItemProvider]
 
 	compiledIncludes []glob.Glob
 	compiledExcludes []glob.Glob
@@ -38,18 +44,80 @@ func (sc SagePathConfig) Name() string {
 	return sc.name
 }
 
-func (sc *SagePathConfig) GetLanguageConfigForFile(relativePath string) (string, *SageLanguageConfig) {
-	pathExt := filepath.Ext(relativePath)
-
-	for name, config := range sc.Languages {
-		for _, ext := range config.Extensions {
-			if pathExt == ext {
-				return name, &config
-			}
+func (sc *SagePathConfig) InitDefaults() error {
+	if sc.Path != nil {
+		expandedPath := os.ExpandEnv(*sc.Path)
+		if !filepath.IsAbs(expandedPath) {
+			return fmt.Errorf("filepath '%s' for config '%s' is not absolute", expandedPath, sc.name)
 		}
+		*sc.Path = expandedPath
 	}
 
-	return "", nil
+	for _, pattern := range sc.Exclude {
+		compiled, err := glob.Compile(pattern)
+		if err != nil {
+			return fmt.Errorf("'%s.exclude': '%s' is invalid: %w", sc.name, pattern, err)
+		}
+		sc.compiledExcludes = append(sc.compiledExcludes, compiled)
+	}
+
+	for _, pattern := range sc.Include {
+		compiled, err := glob.Compile(pattern)
+		if err != nil {
+			return fmt.Errorf("'%s.include': '%s' is invalid: %w", sc.name, pattern, err)
+		}
+		sc.compiledIncludes = append(sc.compiledIncludes, compiled)
+	}
+
+	modelsConfig := SageModelsConfig{}
+	defaultModelsConfig, err := yaml.Marshal(SageModelsConfig{
+		Default:     &DefaultModel,
+		ExplainCode: &DefaultExplainCodeModel,
+		Embedding:   &DefaultEmbeddingModel,
+	})
+	if err != nil {
+		return err
+	}
+	sc.Models, err = liveconf.NewConfigWatcher[SageModelsConfig](getWorkspaceModelsPath(), string(defaultModelsConfig), &modelsConfig, yaml.Unmarshal)
+	if err != nil {
+		return err
+	}
+
+	providers := []*ContextItemProvider{}
+	sc.Context, err = liveconf.NewConfigWatcher[[]*ContextItemProvider](getWorkspaceContextPath(), "", &providers, func(data []byte, config any) error {
+		providersPtr := config.(*[]*ContextItemProvider)
+		providers, err := ParseContext(string(data))
+		if err != nil {
+			return err
+		}
+
+		*providersPtr = providers
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	modelsConfig, err = sc.Models.Get()
+	if err != nil {
+		return err
+	}
+
+	if modelsConfig.Default == nil {
+		modelsConfig.Default = &DefaultModel
+	}
+
+	if modelsConfig.Embedding == nil {
+		modelsConfig.Embedding = &DefaultEmbeddingModel
+	}
+
+	if modelsConfig.ExplainCode == nil {
+		modelsConfig.ExplainCode = &DefaultExplainCodeModel
+	}
+
+	sc.Models.Set(modelsConfig)
+
+	return nil
 }
 
 type SageConfig map[string]*SagePathConfig
@@ -95,82 +163,9 @@ func getConfigFromFile(path string) (SageConfig, error) {
 	for name, config := range config {
 		config.name = name
 
-		if config.Path != nil {
-			expandedPath := os.ExpandEnv(*config.Path)
-			if !filepath.IsAbs(expandedPath) {
-				return nil, fmt.Errorf("filepath '%s' for config '%s' is not absolute", expandedPath, name)
-			}
-			*config.Path = expandedPath
-		}
-
-		for _, pattern := range config.Exclude {
-			compiled, err := glob.Compile(pattern)
-			if err != nil {
-				return nil, fmt.Errorf("'%s.exclude': '%s' is invalid: %w", name, pattern, err)
-			}
-			config.compiledExcludes = append(config.compiledExcludes, compiled)
-		}
-
-		for _, pattern := range config.Include {
-			compiled, err := glob.Compile(pattern)
-			if err != nil {
-				return nil, fmt.Errorf("'%s.include': '%s' is invalid: %w", name, pattern, err)
-			}
-			config.compiledIncludes = append(config.compiledIncludes, compiled)
-		}
-
-		modelsConfig := SageModelsConfig{}
-		config.Models, err = liveconf.NewConfigWatcher[SageModelsConfig](getWorkspaceModelsPath(), &modelsConfig, yaml.Unmarshal)
+		err = config.InitDefaults()
 		if err != nil {
 			return nil, err
-		}
-
-		providers := []*ContextItemProvider{}
-		config.Context, err = liveconf.NewConfigWatcher[[]*ContextItemProvider](getWorkspaceContextPath(), &providers, func(data []byte, config any) error {
-			providersPtr := config.(*[]*ContextItemProvider)
-			providers, err := ParseContext(string(data))
-			if err != nil {
-				return err
-			}
-
-			*providersPtr = providers
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		modelsConfig, err = config.Models.Get()
-		if err != nil {
-			return nil, err
-		}
-
-		if modelsConfig.Default == nil {
-			modelsConfig.Default = &DefaultModel
-		}
-
-		if modelsConfig.Embedding == nil {
-			modelsConfig.Embedding = &DefaultEmbeddingModel
-		}
-
-		if modelsConfig.ExplainCode == nil {
-			modelsConfig.ExplainCode = &DefaultExplainCodeModel
-		}
-
-		config.Models.Set(modelsConfig)
-
-		if len(config.Languages) == 0 {
-			return nil, fmt.Errorf("configuration '%s' needs at least one language configuration", name)
-		}
-
-		for langName, langConfig := range config.Languages {
-			if len(langConfig.Extensions) == 0 {
-				return nil, fmt.Errorf("configuration '%s.languages.%s' needs at least one file extension", name, langName)
-			}
-
-			if langConfig.LanguageServer.Command == nil {
-				return nil, fmt.Errorf("configuration '%s.languages.%s.command' cannot be empty", name, langName)
-			}
 		}
 	}
 
@@ -224,9 +219,15 @@ func getConfigFile() (SageConfig, error) {
 	configPath := filepath.Join(configDir, "config.yaml")
 	info, err = os.Stat(configPath)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("Create a config file in ~/.config/sage/config.yaml")
-	}
-	if err != nil {
+		err = os.MkdirAll(configDir, 0755)
+		if err != nil {
+			return nil, err
+		}
+		err = os.WriteFile(configPath, []byte("\n"), 0755)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -272,7 +273,11 @@ func getConfigForWd() (*SagePathConfig, error) {
 
 	config := configs.GetConfigForDir(wd)
 	if config == nil {
-		return nil, fmt.Errorf("No configuration found for working directory %s", wd)
+		config = NewPathConfig(filepath.Base(wd))
+		err = config.InitDefaults()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if err != nil {

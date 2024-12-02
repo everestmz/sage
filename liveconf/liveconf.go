@@ -26,10 +26,22 @@ const (
 	ErrOnNotExist ConfigOption = "Error when file does not exist"
 )
 
-func NewConfigWatcher[T any](filePath string, config *T, loader ConfigLoader, options ...ConfigOption) (*ConfigWatcher[T], error) {
+func NewConfigWatcher[T any](filePath, defaultValue string, config *T, loader ConfigLoader, options ...ConfigOption) (*ConfigWatcher[T], error) {
 	filePath, err := filepath.Abs(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to make path absolute: %w", err)
+	}
+
+	_, err = os.Stat(filePath)
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(filepath.Dir(filePath), 0755)
+		if err != nil {
+			return nil, err
+		}
+		err = os.WriteFile(filePath, []byte(defaultValue), 0755)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cw := &ConfigWatcher[T]{
@@ -69,6 +81,9 @@ func (cw *ConfigWatcher[T]) Get() (T, error) {
 
 func (cw *ConfigWatcher[T]) checkAndReload() error {
 	stat, err := os.Stat(cw.filePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}

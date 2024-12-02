@@ -138,10 +138,11 @@ func (db *DB) Init() error {
 	}
 
 	// TODO: handle different vector dimension sizes
-	_, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS symbol_embedding USING vec0(embedding float[768]);`)
-	if err != nil {
-		return fmt.Errorf("Error creating symbol embeddings table: %w", err)
-	}
+	// XXX: commenting out until we have use for embeddings
+	// _, err = db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS symbol_embedding USING vec0(embedding float[768]);`)
+	// if err != nil {
+	// 	return fmt.Errorf("Error creating symbol embeddings table: %w", err)
+	// }
 
 	// 	_, err = db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS symbol_fts USING fts5(name, content=symbol, content_rowid=id);")
 	// 	if err != nil {
@@ -263,9 +264,11 @@ func (db *DB) InsertSymbol(fileId int64, kind float64, name, path string, startL
 		return 0, err
 	}
 
-	_, err = db.Exec("INSERT INTO symbol_embedding (rowid, embedding) VALUES (?, ?);", symbolId, serialized)
-	if err != nil {
-		return 0, err
+	if embedding != nil {
+		_, err = db.Exec("INSERT INTO symbol_embedding (rowid, embedding) VALUES (?, ?);", symbolId, serialized)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	return symbolId, nil
