@@ -63,6 +63,8 @@ github.com/everestmz/cursor-rpc v0.0.0-20241202041540-8dd67a7b9804 h1:AhJclW6796
 github.com/everestmz/cursor-rpc v0.0.0-20241202041540-8dd67a7b9804/go.mod h1:KhWBNw3NYM9PXGfABP2cgbBmPLA9cfpF7eb2e+Vcyxs=
 github.com/everestmz/llmcat v0.0.4 h1:NPK9/7XkWvx0F3/8a+poSG1AWrrL6IzgfMFgru4vxa4=
 github.com/everestmz/llmcat v0.0.4/go.mod h1:ie25vqmlvOZZga5VrutlCtKCGK7eK0RjHUdRUIAT4/o=
+github.com/everestmz/llmcat v0.0.5 h1:EWgJomBy4nkEIQ9LTOQVg4umddbAVli20dma8BOP40Q=
+github.com/everestmz/llmcat v0.0.5/go.mod h1:ie25vqmlvOZZga5VrutlCtKCGK7eK0RjHUdRUIAT4/o=
 github.com/fatih/color v1.17.0 h1:GlRw1BRJxkpqUCBKzKOw098ed57fEsKeNjpTe3cSjK4=
 github.com/fatih/color v1.17.0/go.mod h1:YZ7TlrGPkiz6ku9fK3TLD/pl3CpsiFyu8N92HLgmosI=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=

@@ -24,7 +24,7 @@ require (
 	github.com/d4l3k/go-bfloat16 v0.0.0-20211005043715-690c3bdd05f1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/everestmz/cursor-rpc v0.0.0-20241202041540-8dd67a7b9804 // indirect
-	github.com/everestmz/llmcat v0.0.4 // indirect
+	github.com/everestmz/llmcat v0.0.5 // indirect
 	github.com/fatih/color v1.17.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
