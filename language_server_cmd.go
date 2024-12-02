@@ -504,6 +504,9 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				ls.InitResult.Capabilities.ExecuteCommandProvider.Commands = append(ls.InitResult.Capabilities.ExecuteCommandProvider.Commands, cmd.Identifier)
 			}
 
+			// We can do symbol search
+			ls.InitResult.Capabilities.WorkspaceSymbolProvider = true
+
 			return reply(ctx, ls.InitResult, nil)
 
 		// case protocol.MethodWorkspaceDidChangeConfiguration:
