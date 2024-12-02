@@ -9,9 +9,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
+	"github.com/everestmz/sage/lsp"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"go.lsp.dev/protocol"
@@ -316,25 +316,6 @@ var IndexCmd = &cobra.Command{
 	},
 }
 
-func getRangeFromFile(text string, locationRange protocol.Range) string {
-	lines := strings.Split(text, "\n")
-
-	var snippetLines []string
-
-	start := locationRange.Start
-	end := locationRange.End
-
-	snippetLines = append(snippetLines, lines[start.Line][start.Character:])
-
-	for i := start.Line + 1; i < end.Line; i++ {
-		snippetLines = append(snippetLines, lines[i])
-	}
-
-	snippetLines = append(snippetLines, lines[end.Line][:end.Character])
-
-	return strings.Join(snippetLines, "\n")
-}
-
 type IndexFileOption int
 
 const (
@@ -419,7 +400,7 @@ func indexFile(wd, path string, content []byte, config *SagePathConfig, ls *Chil
 		// fmt.Println("Indexing", info.Kind, info.Name)
 
 		if shouldEmbed {
-			symbolText := getRangeFromFile(string(content), info.Location.Range)
+			symbolText := lsp.GetRangeFromFile(string(content), info.Location.Range)
 
 			prompt := "\n============= INSTRUCTIONS: ================\nDescribe the following code. Be concise, but descriptive. Use domain-specific terms like function names, class names, etc. Make sure you cover as many edge cases and interesting codepaths/features as possible. Above this message is more code from the same file as this symbol. Your response will be indexed for full-text search. DO NOT reproduce the code with comments. Simply write a short but descriptive paragraph about the code:\n"
 
