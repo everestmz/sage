@@ -275,7 +275,9 @@ func indexFile(wd, path string, content []byte, config *SagePathConfig, llm *LLM
 		log.Debug().Msgf("No supported tree-sitter grammar for file %s", path)
 		return nil, nil
 	} else if err != nil {
-		return nil, err
+		// TODO: some kind of partial functionality?
+		log.Error().Err(err).Msgf("Unable to extract symbols from %s", path)
+		return nil, nil
 	}
 
 	syms := processedFile.Symbols.Definitions
