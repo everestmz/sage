@@ -8,14 +8,14 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/mattn/go-isatty"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
-	"github.com/mattn/go-isatty"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-    "github.com/rs/zerolog"
-    "github.com/rs/zerolog/log"
 )
 
 type SymbolInfo struct {
