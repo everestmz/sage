@@ -6,8 +6,6 @@ toolchain go1.22.4
 
 require github.com/rs/zerolog v1.33.0
 
-require github.com/everestmz/cursor-client v0.0.1
-
 require (
 	connectrpc.com/connect v1.17.0 // indirect
 	github.com/BurntSushi/toml v1.2.1 // indirect
@@ -25,7 +23,7 @@ require (
 	github.com/containerd/console v1.0.3 // indirect
 	github.com/d4l3k/go-bfloat16 v0.0.0-20211005043715-690c3bdd05f1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/everestmz/everestmz.github.io/cursor-reversing/client v0.0.0-20240930062508-cdf000990594 // indirect
+	github.com/everestmz/cursor-rpc v0.0.0-20241202041540-8dd67a7b9804 // indirect
 	github.com/fatih/color v1.17.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -110,5 +108,3 @@ require (
 	mvdan.cc/gofumpt v0.6.0 // indirect
 	mvdan.cc/xurls/v2 v2.5.0 // indirect
 )
-
-replace github.com/everestmz/cursor-client => ../everestmz.github.io/cursor-reversing/client

@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	cursor "github.com/everestmz/everestmz.github.io/cursor-reversing/client"
-	aiserverv1 "github.com/everestmz/everestmz.github.io/cursor-reversing/client/cursor/gen/aiserver/v1"
+	cursor "github.com/everestmz/cursor-rpc"
+	aiserverv1 "github.com/everestmz/cursor-rpc/cursor/gen/aiserver/v1"
 
 	"github.com/rs/zerolog"
 	"go.lsp.dev/protocol"
@@ -175,6 +175,12 @@ var lspCommandExecCursorCompletion = &CommandDefinition{
 			return nil, err
 		}
 
+		// TODO: move this out into some global initializer
+		cursorCredentials, err := cursor.GetDefaultCredentials()
+		if err != nil {
+			return nil, err
+		}
+
 		args := &LlmCompletionArgs{}
 		err = json.Unmarshal(argBs, args)
 		if err != nil {
@@ -192,7 +198,7 @@ var lspCommandExecCursorCompletion = &CommandDefinition{
 
 		model := "claude-3.5-sonnet"
 
-		resp, err := aiClient.StreamChat(context.TODO(), cursor.NewRequest(&aiserverv1.GetChatRequest{
+		resp, err := aiClient.StreamChat(context.TODO(), cursor.NewRequest(cursorCredentials, &aiserverv1.GetChatRequest{
 			ModelDetails: &aiserverv1.ModelDetails{
 				ModelName: &model,
 			},

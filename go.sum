@@ -59,8 +59,8 @@ github.com/envoyproxy/go-control-plane v0.9.9-0.20201210154907-fd9021fe5dad/go.m
 github.com/envoyproxy/go-control-plane v0.9.9-0.20210217033140-668b12f5399d/go.mod h1:cXg6YxExXjJnVBQHBLXeUAgxn2UodCpnH306RInaBQk=
 github.com/envoyproxy/go-control-plane v0.9.9-0.20210512163311-63b5d3c536b0/go.mod h1:hliV/p42l8fGbc6Y9bQ70uLwIvmJyVE5k4iMKlh8wCQ=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
-github.com/everestmz/everestmz.github.io/cursor-reversing/client v0.0.0-20240930062508-cdf000990594 h1:lRK//dXPpW7EkovoQNfpC2/W1g+sap4SeEZ3kuwGHls=
-github.com/everestmz/everestmz.github.io/cursor-reversing/client v0.0.0-20240930062508-cdf000990594/go.mod h1:fain7mP7cftE+HEAMqFzL1YMGmiQAtk3mHMoYIlweTI=
+github.com/everestmz/cursor-rpc v0.0.0-20241202041540-8dd67a7b9804 h1:AhJclW6796wt8wbjfCsYZVZq0ff8bcbsuvrxavIJ+BI=
+github.com/everestmz/cursor-rpc v0.0.0-20241202041540-8dd67a7b9804/go.mod h1:KhWBNw3NYM9PXGfABP2cgbBmPLA9cfpF7eb2e+Vcyxs=
 github.com/fatih/color v1.17.0 h1:GlRw1BRJxkpqUCBKzKOw098ed57fEsKeNjpTe3cSjK4=
 github.com/fatih/color v1.17.0/go.mod h1:YZ7TlrGPkiz6ku9fK3TLD/pl3CpsiFyu8N92HLgmosI=
 github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
