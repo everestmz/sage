@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	sqlite_vec "github.com/asg017/sqlite-vec/bindings/go/cgo"
+	// sqlite_vec "github.com/asg017/sqlite-vec/bindings/go/cgo"
 	"github.com/mattn/go-sqlite3"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog/log"
@@ -17,8 +17,10 @@ import (
 	"go.lsp.dev/uri"
 )
 
-// #cgo LDFLAGS: -L${SRCDIR}/third_party/lib -Wl,-undefined,dynamic_lookup
-import "C"
+// NOTE; when we enable sqlite-vec again, we'll need to re-enable these LDFLAGS
+// To do so, remove the /ignore/
+// /ignore/ #cgo LDFLAGS: -L${SRCDIR}/third_party/lib -Wl,-undefined,dynamic_lookup
+// import "C"
 
 func serializeFloat32(vector []float32) ([]byte, error) {
 	buf := new(bytes.Buffer)
@@ -47,7 +49,7 @@ type DBTX struct {
 }
 
 func openDB(wd string) (*DB, error) {
-	sqlite_vec.Auto()
+	// sqlite_vec.Auto()
 	configDir := getDbsDir()
 
 	dbDir := filepath.Join(configDir, wd)
@@ -63,7 +65,9 @@ func openDB(wd string) (*DB, error) {
 	}
 
 	var sqliteVersion, vecVersion string
-	err = db.QueryRow("select sqlite_version(), vec_version()").Scan(&sqliteVersion, &vecVersion)
+	// err = db.QueryRow("select sqlite_version(), vec_version()").Scan(&sqliteVersion, &vecVersion)
+	vecVersion = "sqlite-vec disabled until needed"
+	err = db.QueryRow("select sqlite_version()").Scan(&sqliteVersion)
 	if err != nil {
 		return nil, err
 	}
