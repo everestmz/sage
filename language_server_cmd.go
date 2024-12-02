@@ -12,7 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/everestmz/sage/locality"
+	"github.com/everestmz/sage/lsp"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -256,7 +259,7 @@ func (ci *LanguageServerClientInfo) GetSymbol(filename string, symbol string) (s
 			if err != nil {
 				return "", err
 			}
-			symbolText := getRangeFromFile(fileContent, sym.Location.Range)
+			symbolText := lsp.GetRangeFromFile(fileContent, sym.Location.Range)
 			return symbolText, nil
 		}
 	}
@@ -457,6 +460,8 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 
 	logLock := &sync.Mutex{}
 
+	var l *locality.Locality
+
 	handler := func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 		logLock.Lock()
 		defer logLock.Unlock()
@@ -481,6 +486,7 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 			if err != nil {
 				return err
 			}
+			l = locality.New(ls)
 
 			capabilitiesJson, err := json.Marshal(ls.InitResult)
 			if err != nil {
@@ -513,7 +519,9 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 		// 	return reply(ctx, nil, ls.DidChangeConfiguration(ctx, params))
 
 		case protocol.MethodInitialized:
-			return reply(ctx, nil, nil)
+			// XXX: pretty sure we need to send initialized through to the client
+			// but we should verify if this breaks pyright since it may
+			// return reply(ctx, nil, nil)
 
 		case protocol.MethodTextDocumentDidOpen:
 			params := &protocol.DidOpenTextDocumentParams{}
@@ -650,6 +658,29 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 			}
 
 			return err
+
+		case protocol.MethodTextDocumentHover:
+			params := &protocol.HoverParams{}
+			err := json.Unmarshal(req.Params(), params)
+			if err != nil {
+				return err
+			}
+
+			fileName := params.TextDocument.URI.Filename()
+			fileContent, err := clientInfo.GetFile(fileName)
+			if err != nil {
+				return err
+			}
+
+			go func() {
+				_, err := l.GetContext(fileName, fileContent, int(params.Position.Line))
+				if err != nil {
+					log.Error().Err(err).Msg("Error getting locality context")
+				}
+			}()
+
+			// no return, pass through
+
 		case protocol.MethodExit:
 			fallthrough
 		case protocol.MethodShutdown:

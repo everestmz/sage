@@ -21,6 +21,7 @@ require (
 	github.com/chewxy/math32 v1.10.1 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
+	github.com/coder/websocket v1.8.12 // indirect
 	github.com/containerd/console v1.0.3 // indirect
 	github.com/d4l3k/go-bfloat16 v0.0.0-20211005043715-690c3bdd05f1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
@@ -45,6 +46,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
@@ -67,6 +69,7 @@ require (
 	github.com/segmentio/encoding v0.3.4 // indirect
 	github.com/shurcooL/go v0.0.0-20200502201357-93f07166e636 // indirect
 	github.com/shurcooL/go-goon v1.0.0 // indirect
+	github.com/smacker/go-tree-sitter v0.0.0-20240827094217-dd81d9e9be82 // indirect
 	github.com/spf13/cobra v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tinylib/msgp v1.2.0 // indirect
