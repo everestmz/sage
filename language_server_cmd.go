@@ -630,6 +630,8 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				break
 			}
 
+			reply(ctx, []any{}, err)
+
 			edit, err := cmd.Execute(params, clientConn, clientInfo)
 			if err != nil {
 				return err
@@ -647,7 +649,7 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				lsLogger.Debug().Bool("apply_edit_result", ok).Msg("Result of applying edit")
 			}
 
-			return reply(ctx, []any{}, err)
+			return err
 		case protocol.MethodExit:
 			fallthrough
 		case protocol.MethodShutdown:
