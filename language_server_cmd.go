@@ -12,10 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/everestmz/sage/locality"
 	"github.com/everestmz/sage/lsp"
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -460,7 +458,7 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 
 	logLock := &sync.Mutex{}
 
-	var l *locality.Locality
+	// var l *locality.Locality
 
 	handler := func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 		logLock.Lock()
@@ -486,7 +484,6 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 			if err != nil {
 				return err
 			}
-			l = locality.New(ls)
 
 			capabilitiesJson, err := json.Marshal(ls.InitResult)
 			if err != nil {
@@ -666,18 +663,19 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				return err
 			}
 
-			fileName := params.TextDocument.URI.Filename()
-			fileContent, err := clientInfo.GetFile(fileName)
-			if err != nil {
-				return err
-			}
+			// fileName := params.TextDocument.URI.Filename()
+			// fileContent, err := clientInfo.GetFile(fileName)
+			// if err != nil {
+			// 	return err
+			// }
 
-			go func() {
-				_, err := l.GetContext(fileName, fileContent, int(params.Position.Line))
-				if err != nil {
-					log.Error().Err(err).Msg("Error getting locality context")
-				}
-			}()
+			// TODO: re-add locality
+			// go func() {
+			// 	_, err := l.GetContext(fileName, fileContent, int(params.Position.Line))
+			// 	if err != nil {
+			// 		log.Error().Err(err).Msg("Error getting locality context")
+			// 	}
+			// }()
 
 			// no return, pass through
 
