@@ -12,21 +12,26 @@ import (
 
 var CompletionCmd = &cobra.Command{
 	Use:     "complete",
-	Aliases: []string{"c"},
+	Short:   "Run a question within the context of the working directory",
+	Aliases: []string{"c", "ask"},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		input, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return err
-		}
+		var stdinLines []string
+		if len(args) > 0 {
+			stdinLines = args
+		} else {
+			input, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return err
+			}
 
-		stdinLines := strings.Split(string(input), "\n")
+			stdinLines = strings.Split(string(input), "\n")
+		}
 
 		fmt.Println("Your input was:")
 		for _, line := range stdinLines {
 			time.Sleep(time.Second)
 			fmt.Println(line)
 		}
-		fmt.Println("Done")
 
 		return nil
 	},
