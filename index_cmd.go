@@ -179,6 +179,18 @@ var IndexCmd = &cobra.Command{
 				return nil
 			}
 
+			if d.Type()&os.ModeSymlink != 0 {
+				// Need to do since fs.DirEntry doesn't follow symlinks
+				info, err := os.Stat(path)
+				if err != nil {
+					return nil
+				}
+
+				if info.IsDir() {
+					return nil
+				}
+			}
+
 			shortPath, err := filepath.Rel(wd, path)
 			if err != nil {
 				return err
