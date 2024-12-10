@@ -224,7 +224,10 @@ var lspCommandExecCursorCompletion = &CommandDefinition{
 }
 
 func buildPrompt(lsLogger zerolog.Logger, args *LlmCompletionArgs, clientInfo *LanguageServerClientInfo) (string, error) {
-	textDocument := clientInfo.GetOpenDocument(args.Filename)
+	textDocument, ok := clientInfo.Docs.GetOpenDocument(args.Filename)
+	if !ok {
+		return "", fmt.Errorf("No text document for supposedly open file %s", args.Filename)
+	}
 
 	documentLines := append(strings.Split(textDocument.Text, "\n"), "") // Unixy files end in \n
 	lineRange := documentLines[args.Selection.Start.Line : args.Selection.End.Line+1]

@@ -12,7 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/everestmz/sage/docstate"
 	"github.com/everestmz/sage/lsp"
+	"github.com/everestmz/sage/rpc/server"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"go.lsp.dev/jsonrpc2"
@@ -217,27 +219,31 @@ func NewLanguageServerClientInfo(config *SagePathConfig, llm *LLMClient) *Langua
 		panic(err)
 	}
 
+	docs := docstate.NewDocumentState()
+
+	server.StartStateServer(docs, getWorkspaceSocketPath(wd))
+
 	return &LanguageServerClientInfo{
+		Docs: docs,
+
 		LLM:    llm,
 		Config: config,
 
-		openDocuments: map[uri.URI]*protocol.TextDocumentItem{},
-		docLock:       &sync.Mutex{},
-		stateDir:      filepath.Join(getConfigDir(), "state"),
-		db:            db,
-		wd:            wd,
+		stateDir: filepath.Join(getConfigDir(), "state"),
+		db:       db,
+		wd:       wd,
 	}
 }
 
 type LanguageServerClientInfo struct {
+	Docs *docstate.DocumentState
+
 	LLM    *LLMClient
 	Config *SagePathConfig
 
-	openDocuments map[uri.URI]*protocol.TextDocumentItem
-	docLock       *sync.Mutex
-	stateDir      string
-	db            *DB
-	wd            string
+	stateDir string
+	db       *DB
+	wd       string
 }
 
 func (ci *LanguageServerClientInfo) GetSymbol(filename string, symbol string) (string, error) {
@@ -266,8 +272,7 @@ func (ci *LanguageServerClientInfo) GetSymbol(filename string, symbol string) (s
 }
 
 func (ci *LanguageServerClientInfo) GetFile(filename string) (string, error) {
-	openDoc := ci.GetOpenDocument(uri.File(filename))
-	if openDoc != nil {
+	if openDoc, ok := ci.Docs.GetOpenDocument(uri.File(filename)); ok {
 		return openDoc.Text, nil
 	}
 
@@ -300,64 +305,28 @@ func (ci *LanguageServerClientInfo) GetRange(filename string, start, end int) (s
 	return strings.Join(lines[start:end], "\n"), nil
 }
 
-func (ci *LanguageServerClientInfo) updateState(uri uri.URI) {
-	path := filepath.Join(ci.stateDir, uri.Filename())
-	err := os.MkdirAll(filepath.Dir(path), 0755)
-	if err != nil {
-		panic(err)
-	}
-	err = os.WriteFile(
-		path,
-		[]byte(ci.openDocuments[uri].Text),
-		0755,
-	)
-	if err != nil {
-		panic(err)
-	}
-}
+// func (ci *LanguageServerClientInfo) updateState(uri uri.URI) {
+// 	path := filepath.Join(ci.stateDir, uri.Filename())
+// 	err := os.MkdirAll(filepath.Dir(path), 0755)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	err = os.WriteFile(
+// 		path,
+// 		[]byte(ci.openDocuments[uri].Text),
+// 		0755,
+// 	)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
-func (ci *LanguageServerClientInfo) clearState(uri uri.URI) {
-	err := os.RemoveAll(filepath.Join(ci.stateDir, uri.Filename()))
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (ci *LanguageServerClientInfo) GetOpenDocument(uri uri.URI) *protocol.TextDocumentItem {
-	ci.docLock.Lock()
-	defer ci.docLock.Unlock()
-
-	return ci.openDocuments[uri]
-}
-
-func (ci *LanguageServerClientInfo) OpenDocument(doc *protocol.TextDocumentItem) {
-	ci.docLock.Lock()
-	defer ci.docLock.Unlock()
-
-	ci.openDocuments[doc.URI] = doc
-	ci.updateState(doc.URI)
-}
-
-func (ci *LanguageServerClientInfo) CloseDocument(uri uri.URI) {
-	ci.docLock.Lock()
-	defer ci.docLock.Unlock()
-
-	ci.clearState(uri)
-	delete(ci.openDocuments, uri)
-}
-
-func (ci *LanguageServerClientInfo) EditDocument(uri uri.URI, editFunc func(doc *protocol.TextDocumentItem) error) error {
-	ci.docLock.Lock()
-	defer ci.docLock.Unlock()
-
-	err := editFunc(ci.openDocuments[uri])
-	if err != nil {
-		return err
-	}
-
-	ci.updateState(uri)
-	return nil
-}
+// func (ci *LanguageServerClientInfo) clearState(uri uri.URI) {
+// 	err := os.RemoveAll(filepath.Join(ci.stateDir, uri.Filename()))
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
 
 type CommandDefinition struct {
 	Title          string
@@ -530,7 +499,7 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				return err
 			}
 
-			clientInfo.OpenDocument(&params.TextDocument)
+			clientInfo.Docs.OpenDocument(&params.TextDocument)
 
 			return reply(ctx, nil, ls.DidOpen(ctx, params))
 
@@ -541,7 +510,7 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				return err
 			}
 
-			clientInfo.CloseDocument(params.TextDocument.URI)
+			clientInfo.Docs.CloseDocument(params.TextDocument.URI)
 
 			return reply(ctx, nil, ls.DidClose(ctx, params))
 
@@ -552,7 +521,7 @@ func GetLanguageServerDispatcher(closeChan chan bool, clientConn LspClient, lsCo
 				return err
 			}
 
-			err = clientInfo.EditDocument(params.TextDocument.URI, func(doc *protocol.TextDocumentItem) error {
+			err = clientInfo.Docs.EditDocument(params.TextDocument.URI, func(doc *protocol.TextDocumentItem) error {
 				newText, err := applyChangesToDocument(doc.Text, params.ContentChanges)
 				if err != nil {
 					lsLogger.Error().Err(err).Msg("Error applying edits")

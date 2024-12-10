@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package languageserver;
+option go_package = "github.com/everestmz/sage/rpc/languageserver";
+
+import "google/protobuf/timestamp.proto";
+
+message TextDocument {
+  string uri = 1;
+  string language_id = 2;
+  int32 version = 3;
+  string text = 4;
+  google.protobuf.Timestamp last_edit = 5;
+  int32 last_edited_line = 6;
+}
+
+message GetOpenDocumentsRequest {}
+
+message GetOpenDocumentsResponse {
+  map<string, TextDocument> documents = 1;
+}
+
+service LanguageServerState {
+  rpc GetOpenDocuments(GetOpenDocumentsRequest) returns (GetOpenDocumentsResponse) {}
+}

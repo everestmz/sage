@@ -7,6 +7,9 @@ INSTALL_PATH = $(PREFIX)/bin
 bin/sage:
 	go build -o bin/sage .
 
+generate:
+	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative rpc/languageserver/LanguageServerState.proto
+
 install: bin/sage
 	@echo "Installing to $(INSTALL_PATH)/sage..."
 	@mkdir -p $(INSTALL_PATH)

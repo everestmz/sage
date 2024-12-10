@@ -286,3 +286,9 @@ func getConfigForWd() (*SagePathConfig, error) {
 
 	return config, nil
 }
+
+func getWorkspaceSocketPath(wd string) string {
+	wsDir := getWorkspaceDir(wd)
+
+	return filepath.Join(wsDir, "language_server.sock")
+}
