@@ -12,9 +12,11 @@ It's since grown into an AI multitool for any editor that supports language serv
 
 Dynamically includes the most relevant symbols in the context window, using a combination of [tree-sitter](https://tree-sitter.github.io/tree-sitter/) and LSP clients. No need to manually `@mention` functions or types to include them in context!
 
-### Local LLM completion support
+### LLM completions
 
 Uses [ollama](https://github.com/ollama/ollama) to power on-device code completion and LLM integrations.
+
+![code action-based LLM completions](https://everestmz.github.io/assets/images/sage-demo.gif)
 
 ### Cursor support
 
