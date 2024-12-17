@@ -2,6 +2,8 @@
 
 Integrate LLMS into any editor that supports LSP.
 
+[Read more about how & why I built sage.](https://ev.dev/posts/introducing-sage)
+
 Sage started off as a project to add features like LLM support to [Helix](https://github.com/helix-editor/helix), and enable features like workspace symbol search in large codebases I was working with that crippled language servers like `pyright`.
 
 It's since grown into an AI multitool for any editor that supports language servers.
